@@ -118,11 +118,13 @@
 
                 <div class="input-zone">
                     <div class="input-actions">
-                        <button id="voiceBtn" class="input-icon-btn" onclick="toggleVoiceInput()" title="Voice Input">
+                        <!-- Microphone button -->
+                        <button onclick="toggleVoiceInput()" title="Voice Input" class="input-icon-btn">
                             <span>🎤</span>
                         </button>
-                        <button id="speakerBtn" class="input-icon-btn" onclick="toggleSpeaker()" title="Audio On/Off">
-                            <span>🔇</span>
+                        <!-- Speaker button -->
+                        <button onclick="toggleSpeech()" title="Toggle Speech" class="input-icon-btn">
+                            <span>🔊</span>
                         </button>
                     </div>
                     
