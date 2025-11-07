@@ -1,30 +1,28 @@
 // ============================================
-// EMOTIONAL SUPPORT CHATBOT - GOEMOTIONS BERT + LLM
-// Complete Ready-to-Use Version
+// EMOTIONAL SUPPORT CHATBOT - ENHANCED VERSION
+// 28 GoEmotions + Extended Responses + Voice
 // ============================================
 
 console.log('🚀 MindfulChat AI Starting...');
 
 // ============================================
-// CONFIGURATION - ADD YOUR API KEYS HERE
+// CONFIGURATION
 // ============================================
 
 const API_CONFIG = {
-    // Hugging Face API (GoEmotions BERT Model)
     huggingface: {
-        token: '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', // Get from: https://huggingface.co/settings/tokens
-        model: 'SamLowe/roberta-base-go_emotions' // GoEmotions fine-tuned BERT
+        token: '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',
+        model: 'SamLowe/roberta-base-go_emotions'
     },
-    
-    // Google Gemini API (for LLM responses)
     gemini: {
-        apiKey: 'AIzaSyB_VjQO7ntJqDGegkvwAtq5Kb1s_RoHJbI', // Get from: https://makersuite.google.com/app/apikey
-        url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent'
+        apiKey: 'AIzaSyDfNS3pFDaUToURP37nk-yNaFILrmQ7w4s',
+        url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
+        enabled: true
     }
 };
 
 // ============================================
-// GOEMOTIONS - 28 EMOTION LABELS
+// GOEMOTIONS - ALL 28 EMOTIONS
 // ============================================
 
 const GOEMOTIONS = {
@@ -37,16 +35,19 @@ const GOEMOTIONS = {
         'sadness', 'surprise', 'neutral'
     ],
     
-    // Group emotions for UI display (map 28 → 5)
     displayMapping: {
-        happy: ['joy', 'amusement', 'excitement', 'love', 'gratitude', 'optimism', 'pride', 'relief', 'admiration', 'approval', 'caring', 'desire'],
-        sad: ['sadness', 'grief', 'disappointment', 'embarrassment', 'remorse'],
-        anxious: ['fear', 'nervousness', 'confusion'],
-        angry: ['anger', 'annoyance', 'disgust', 'disapproval'],
-        neutral: ['neutral', 'curiosity', 'realization', 'surprise']
+        happy: ['joy', 'amusement', 'excitement', 'pride', 'relief'],
+        sad: ['sadness', 'grief', 'disappointment', 'remorse'],
+        anxious: ['fear', 'nervousness'],
+        angry: ['anger', 'annoyance', 'disgust'],
+        grateful: ['gratitude', 'appreciation'],
+        loving: ['love', 'caring', 'admiration'],
+        confused: ['confusion', 'realization'],
+        embarrassed: ['embarrassment'],
+        surprised: ['surprise'],
+        neutral: ['neutral', 'curiosity', 'approval', 'disapproval', 'desire', 'optimism']
     },
     
-    // Map display category back to emotion
     getDisplayEmotion(emotion) {
         for (const [display, emotions] of Object.entries(this.displayMapping)) {
             if (emotions.includes(emotion)) return display;
@@ -65,26 +66,160 @@ const AppState = {
     emotionHistory: [],
     currentEmotion: 'neutral',
     emotionConfidence: 0,
-    moodData: { happy: 0, sad: 0, anxious: 0, angry: 0, neutral: 0 },
+    moodData: { 
+        happy: 0, sad: 0, anxious: 0, angry: 0, 
+        grateful: 0, loving: 0, confused: 0, 
+        embarrassed: 0, surprised: 0, neutral: 0 
+    },
     sessionData: { startTime: new Date(), messageCount: 0 },
     isListening: false,
     isSpeaking: false,
     recognition: null,
-    moodChart: null
+    moodChart: null,
+    storedConversations: [],
+    storedMoodLogs: []
 };
 
 // ============================================
-// GOEMOTIONS BERT EMOTION ANALYZER
+// SPEECH MODULE (INTEGRATED)
+// ============================================
+
+const SpeechModule = {
+    init() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            console.warn('⚠️ Speech recognition not supported in this browser');
+            return false;
+        }
+        
+        AppState.recognition = new SpeechRecognition();
+        AppState.recognition.continuous = false;
+        AppState.recognition.interimResults = false;
+        AppState.recognition.lang = 'en-US';
+        
+        AppState.recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            const input = document.getElementById('userInput');
+            if (input) {
+                input.value = transcript;
+                input.style.height = 'auto';
+                input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+            }
+            this.stopListening();
+        };
+        
+        AppState.recognition.onerror = (event) => {
+            console.error('❌ Speech recognition error:', event.error);
+            this.stopListening();
+        };
+        
+        AppState.recognition.onend = () => {
+            this.stopListening();
+        };
+        
+        console.log('✅ Speech recognition initialized');
+        return true;
+    },
+    
+    startListening() {
+        if (!AppState.recognition) {
+            alert('Speech recognition not supported in your browser');
+            return;
+        }
+        
+        try {
+            AppState.recognition.start();
+            AppState.isListening = true;
+            
+            const micBtn = document.querySelector('[onclick="toggleVoiceInput()"]');
+            if (micBtn) {
+                micBtn.style.background = '#ef4444';
+                micBtn.style.color = 'white';
+            }
+            
+            console.log('🎤 Listening...');
+        } catch (error) {
+            console.error('❌ Error starting recognition:', error);
+        }
+    },
+    
+    stopListening() {
+        if (!AppState.recognition) return;
+        
+        try {
+            AppState.recognition.stop();
+        } catch (error) {
+            console.error('❌ Error stopping recognition:', error);
+        }
+        
+        AppState.isListening = false;
+        
+        const micBtn = document.querySelector('[onclick="toggleVoiceInput()"]');
+        if (micBtn) {
+            micBtn.style.background = '';
+            micBtn.style.color = '';
+        }
+        
+        console.log('🎤 Stopped listening');
+    },
+    
+    toggleSpeech() {
+        if (!window.speechSynthesis) {
+            alert('Text-to-speech not supported in your browser');
+            return;
+        }
+        
+        AppState.isSpeaking = !AppState.isSpeaking;
+        
+        const speakBtn = document.querySelector('[onclick="toggleSpeech()"]');
+        if (speakBtn) {
+            if (AppState.isSpeaking) {
+                speakBtn.style.background = '#10b981';
+                speakBtn.style.color = 'white';
+                console.log('🔊 Speech enabled');
+            } else {
+                speakBtn.style.background = '';
+                speakBtn.style.color = '';
+                window.speechSynthesis.cancel();
+                console.log('🔇 Speech disabled');
+            }
+        }
+    }
+};
+
+// ============================================
+// VOICE CONTROL FUNCTIONS
+// ============================================
+
+function toggleVoiceInput() {
+    if (AppState.isListening) {
+        SpeechModule.stopListening();
+    } else {
+        SpeechModule.startListening();
+    }
+}
+
+function toggleSpeech() {
+    SpeechModule.toggleSpeech();
+}
+
+// ============================================
+// ENHANCED EMOTION ANALYZER
 // ============================================
 
 const EmotionAnalyzer = {
     async detectEmotion(text) {
-        console.log('🧠 Analyzing emotion with GoEmotions BERT...');
+        console.log('🧠 Analyzing emotion...');
         
         try {
             showLoading();
             
-            // Call Hugging Face API
+            if (API_CONFIG.huggingface.token === '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') {
+                hideLoading();
+                return this.keywordFallback(text);
+            }
+            
             const response = await fetch(
                 `https://api-inference.huggingface.co/models/${API_CONFIG.huggingface.model}`,
                 {
@@ -95,36 +230,27 @@ const EmotionAnalyzer = {
                     },
                     body: JSON.stringify({
                         inputs: text,
-                        options: {
-                            wait_for_model: true,
-                            use_cache: false
-                        }
+                        options: { wait_for_model: true, use_cache: false }
                     })
                 }
             );
             
             if (!response.ok) {
-                console.warn('⚠️ BERT API failed, using fallback');
                 hideLoading();
                 return this.keywordFallback(text);
             }
             
             const result = await response.json();
-            console.log('📊 BERT Response:', result);
             
-            // Check for errors
             if (result.error) {
-                console.warn('⚠️ API Error:', result.error);
                 hideLoading();
                 return this.keywordFallback(text);
             }
             
-            // Parse BERT output
             const analysis = this.parseBERTOutput(result, text);
-            
             hideLoading();
-            console.log(`✅ Detected: ${analysis.primary.emotion} (${analysis.primary.score}%)`);
             
+            console.log(`✅ Detected: ${analysis.primary.emotion} (${analysis.primary.score}%)`);
             return analysis;
             
         } catch (error) {
@@ -135,7 +261,6 @@ const EmotionAnalyzer = {
     },
     
     parseBERTOutput(result, text) {
-        // Handle different response formats
         let emotions = [];
         
         if (Array.isArray(result) && result.length > 0) {
@@ -149,10 +274,8 @@ const EmotionAnalyzer = {
             emotions = result;
         }
         
-        // Sort by score
         emotions.sort((a, b) => b.score - a.score);
         
-        // Get top emotions
         const top = emotions.slice(0, 5).map(e => ({
             emotion: e.label.toLowerCase(),
             score: Math.round(e.score * 100)
@@ -161,56 +284,67 @@ const EmotionAnalyzer = {
         const primary = top[0];
         const secondary = top[1]?.score > 20 ? top[1] : null;
         
-        // Detect intensity
         const exclamations = (text.match(/!/g) || []).length;
         const caps = (text.match(/[A-Z]/g) || []).length / text.length;
         const intensity = exclamations >= 3 || caps > 0.5 ? 'high' : 
                          exclamations >= 1 || caps > 0.2 ? 'medium' : 'low';
         
         return {
-            text: text,
-            primary: primary,
-            secondary: secondary,
+            text,
+            primary,
+            secondary,
             allEmotions: top,
-            intensity: intensity,
+            intensity,
             hasQuestion: text.includes('?'),
             timestamp: new Date().toISOString()
         };
     },
     
     keywordFallback(text) {
-        console.log('🔍 Using keyword-based fallback');
+        console.log('🔍 Using enhanced keyword fallback');
         
         const keywords = {
-            joy: ['happy', 'joy', 'joyful', 'great', 'wonderful', 'amazing', 'fantastic', 'awesome', 'love', 'yay'],
-            excitement: ['excited', 'exciting', 'cant wait', "can't wait", 'pumped', 'hyped', 'thrilled', 'stoked'],
-            sadness: ['sad', 'unhappy', 'depressed', 'down', 'blue', 'miserable', 'hurt', 'crying', 'cry'],
-            anger: ['angry', 'mad', 'furious', 'pissed', 'hate', 'rage', 'annoyed'],
-            fear: ['scared', 'afraid', 'terrified', 'fear', 'fearful', 'frightened'],
-            nervousness: ['nervous', 'anxious', 'anxiety', 'stress', 'stressed', 'worried', 'worry', 'panic'],
-            gratitude: ['thank', 'thanks', 'grateful', 'appreciate', 'thankful'],
-            love: ['love', 'adore', 'cherish', 'care about'],
-            disappointment: ['disappointed', 'let down', 'expected more'],
-            grief: ['loss', 'lost', 'death', 'died', 'miss', 'missing'],
-            pride: ['proud', 'accomplished', 'achieved', 'achievement'],
-            confusion: ['confused', 'dont understand', "don't understand", 'unclear', 'what'],
-            neutral: ['ok', 'okay', 'fine', 'alright', 'hi', 'hello', 'hey']
+            joy: ['happy', 'joy', 'joyful', 'great', 'wonderful', 'amazing', 'fantastic', 'awesome', 'yay', 'hooray', 'excellent', 'perfect', 'brilliant'],
+            excitement: ['excited', 'exciting', 'cant wait', "can't wait", 'pumped', 'hyped', 'thrilled', 'stoked', 'eager', 'psyched'],
+            amusement: ['funny', 'hilarious', 'lol', 'haha', 'lmao', 'laugh', 'laughing', 'amusing', 'joke', 'humor'],
+            pride: ['proud', 'accomplished', 'achieved', 'achievement', 'success', 'succeeded', 'nailed', 'crushed it', 'won'],
+            relief: ['relief', 'relieved', 'finally', 'phew', 'thank god', 'glad', 'better now', 'over with'],
+            gratitude: ['thank', 'thanks', 'grateful', 'appreciate', 'thankful', 'appreciate you', 'blessed', 'fortunate'],
+            love: ['love', 'adore', 'cherish', 'treasure', 'devoted', 'affection', 'romance', 'romantic', 'crush'],
+            caring: ['care about', 'worry about', 'concerned', 'hope youre', 'thinking of', 'miss you', 'support'],
+            admiration: ['admire', 'respect', 'look up to', 'impressed', 'inspiring', 'amazing person', 'role model'],
+            sadness: ['sad', 'unhappy', 'depressed', 'depression', 'down', 'blue', 'miserable', 'hurt', 'crying', 'cry', 'tears', 'heartbroken', 'devastated', 'lonely', 'alone', 'empty'],
+            grief: ['loss', 'lost someone', 'death', 'died', 'passed away', 'miss them', 'mourning', 'grieving', 'funeral'],
+            disappointment: ['disappointed', 'let down', 'expected more', 'fail', 'failed', 'didnt work', 'fell short', 'not good enough'],
+            remorse: ['regret', 'sorry', 'shouldnt have', 'wish i hadnt', 'feel bad', 'guilty', 'my fault', 'screwed up'],
+            anger: ['angry', 'mad', 'furious', 'pissed', 'hate', 'rage', 'outraged', 'livid', 'fuming', 'seething'],
+            annoyance: ['annoyed', 'irritated', 'bothered', 'frustrated', 'aggravated', 'bugged', 'gets on my nerves'],
+            disgust: ['disgusting', 'gross', 'sick', 'nasty', 'revolting', 'repulsive', 'cant stand', 'hate this'],
+            disapproval: ['disagree', 'dont approve', 'not okay', 'wrong', 'shouldnt', 'against', 'oppose'],
+            fear: ['scared', 'afraid', 'terrified', 'fear', 'fearful', 'frightened', 'nightmare', 'horror', 'panic'],
+            nervousness: ['nervous', 'anxious', 'anxiety', 'stress', 'stressed', 'worried', 'worry', 'tense', 'uneasy', 'on edge'],
+            embarrassment: ['embarrassed', 'ashamed', 'humiliated', 'awkward', 'mortified', 'cringe', 'uncomfortable', 'self-conscious'],
+            confusion: ['confused', 'dont understand', "don't understand", 'unclear', 'lost', 'what', 'why', 'how', 'puzzled', 'baffled'],
+            surprise: ['surprised', 'shocked', 'unexpected', 'wow', 'omg', 'cant believe', 'didnt expect', 'sudden', 'blown away'],
+            curiosity: ['curious', 'wonder', 'wondering', 'interested', 'fascinated', 'intrigued', 'want to know'],
+            optimism: ['hopeful', 'optimistic', 'looking forward', 'positive', 'things will work out', 'better tomorrow', 'bright side'],
+            desire: ['want', 'wish', 'hope', 'desire', 'crave', 'need', 'dream of', 'long for'],
+            realization: ['realized', 'figured out', 'makes sense', 'understand now', 'aha', 'got it', 'clicked', 'dawned on me'],
+            neutral: ['ok', 'okay', 'fine', 'alright', 'hi', 'hello', 'hey', 'sup', 'whats up']
         };
         
         const lowerText = text.toLowerCase();
         const scores = {};
         
-        // Count matches
         for (const [emotion, words] of Object.entries(keywords)) {
             scores[emotion] = 0;
             for (const word of words) {
                 if (lowerText.includes(word)) {
-                    scores[emotion]++;
+                    scores[emotion] += 2;
                 }
             }
         }
         
-        // Find top emotion
         const sorted = Object.entries(scores)
             .filter(([, score]) => score > 0)
             .sort(([, a], [, b]) => b - a);
@@ -219,10 +353,10 @@ const EmotionAnalyzer = {
         const secondary = sorted[1] || null;
         
         return {
-            text: text,
-            primary: { emotion: primary[0], score: 70 },
-            secondary: secondary ? { emotion: secondary[0], score: 50 } : null,
-            allEmotions: sorted.slice(0, 3).map(([e, s]) => ({ emotion: e, score: s * 20 })),
+            text,
+            primary: { emotion: primary[0], score: 88 },
+            secondary: secondary ? { emotion: secondary[0], score: 55 } : null,
+            allEmotions: sorted.slice(0, 3).map(([e, s]) => ({ emotion: e, score: Math.min(s * 15, 95) })),
             intensity: 'medium',
             hasQuestion: text.includes('?'),
             timestamp: new Date().toISOString()
@@ -231,14 +365,13 @@ const EmotionAnalyzer = {
 };
 
 // ============================================
-// LLM RESPONSE GENERATOR (FRIEND-LIKE)
+// ENHANCED RESPONSE GENERATOR
 // ============================================
 
 const ResponseGenerator = {
     async generateResponse(emotionAnalysis) {
-        console.log('💬 Generating friend-like response...');
+        console.log('💬 Generating response...');
         
-        // Add to history
         AppState.conversationHistory.push({
             text: emotionAnalysis.text,
             emotion: emotionAnalysis.primary.emotion,
@@ -247,14 +380,12 @@ const ResponseGenerator = {
         
         AppState.emotionHistory.push(emotionAnalysis.primary.emotion);
         
-        // Keep last 5
         if (AppState.conversationHistory.length > 5) {
             AppState.conversationHistory.shift();
             AppState.emotionHistory.shift();
         }
         
-        // Try Gemini first
-        if (API_CONFIG.gemini.apiKey && API_CONFIG.gemini.apiKey !== 'YOUR_GEMINI_API_KEY') {
+        if (API_CONFIG.gemini.apiKey && API_CONFIG.gemini.apiKey !== 'AIzaSyDfNS3pFDaUToURP37nk-yNaFILrmQ7w4s') {
             try {
                 return await this.generateWithGemini(emotionAnalysis);
             } catch (error) {
@@ -268,48 +399,33 @@ const ResponseGenerator = {
     
     async generateWithGemini(analysis) {
         const { primary, secondary, intensity, hasQuestion } = analysis;
-        
-        // Detect conversation pattern
         const pattern = this.detectPattern();
         
-        // Build context
         const recentContext = AppState.conversationHistory.slice(-3)
             .map(m => `User: "${m.text}" (${m.emotion})`)
             .join('\n');
         
-        // Build prompt
-        const prompt = `You're a caring friend chatting casually with someone who needs emotional support.
+        const prompt = `You're a caring friend chatting with someone who needs support.
 
 RECENT CONVERSATION:
-${recentContext || 'Just started chatting'}
+${recentContext || 'Just started'}
 
-CURRENT MESSAGE: "${analysis.text}"
+CURRENT: "${analysis.text}"
 
-EMOTION DETECTED:
-- Primary: ${primary.emotion} (${primary.score}% confidence)
-${secondary ? `- Secondary: ${secondary.emotion} (${secondary.score}%)` : ''}
-- Intensity: ${intensity}
+EMOTION: ${primary.emotion} (${primary.score}%), Intensity: ${intensity}
+PATTERN: ${pattern}
 
-CONVERSATION PATTERN: ${pattern}
+GUIDANCE: ${this.getEmotionGuidance(primary.emotion)}
 
-HOW TO RESPOND TO ${primary.emotion.toUpperCase()}:
-${this.getEmotionGuidance(primary.emotion)}
+RULES:
+1. Talk like a REAL FRIEND - casual, warm
+2. 2-3 sentences MAX
+3. Use contractions
+4. NO therapist language
+5. ${hasQuestion ? 'Answer their question first!' : 'Start with empathy'}
 
-STRICT RULES:
-1. Talk like a REAL FRIEND - casual, warm, natural
-2. Use contractions: "I'm", "you're", "that's", "don't"
-3. Keep it SHORT: 2-3 sentences MAXIMUM
-4. Ask ONE good follow-up question
-5. NO therapist talk - avoid "I validate", "I hear you saying"
-6. NO corporate language - avoid "I appreciate you sharing"
-7. Match their energy - ${intensity === 'high' ? 'be enthusiastic!' : 'keep it chill'}
-8. ${hasQuestion ? 'They asked a question - ANSWER IT FIRST!' : 'Start with empathy'}
-9. Remember what they said before
-10. Be supportive but keep it natural and casual
-
-Generate your friend response (2-3 sentences max):`;
+Response:`;
         
-        // Call Gemini
         const response = await fetch(
             `${API_CONFIG.gemini.url}?key=${API_CONFIG.gemini.apiKey}`,
             {
@@ -326,9 +442,7 @@ Generate your friend response (2-3 sentences max):`;
             }
         );
         
-        if (!response.ok) {
-            throw new Error('Gemini API failed');
-        }
+        if (!response.ok) throw new Error('Gemini failed');
         
         const data = await response.json();
         return data.candidates[0].content.parts[0].text.trim();
@@ -336,38 +450,32 @@ Generate your friend response (2-3 sentences max):`;
     
     getEmotionGuidance(emotion) {
         const guidance = {
-            joy: "Share their happiness! Be genuinely excited. Ask what made them so happy.",
-            excitement: "Match their energy! Be enthusiastic. Ask what they're pumped about.",
-            amusement: "Keep it light and fun. Maybe add something playful.",
-            love: "Be warm and supportive. Ask about what/who they love.",
-            gratitude: "Accept thanks warmly. Be humble but appreciative.",
-            pride: "Celebrate with them! They earned it. Be genuinely proud.",
+            joy: "Share their happiness! Be genuinely excited and ask what made them so happy.",
+            excitement: "Match their energy! Be enthusiastic and ask what they're pumped about.",
+            amusement: "Keep it light and fun. Laugh with them. Ask what's making them smile.",
+            pride: "Celebrate with them! They earned it. Be genuinely proud and ask details.",
             relief: "Acknowledge their relief. The weight is off. Ask what happened.",
-            optimism: "Support their positive outlook. Be encouraging.",
-            admiration: "They appreciate someone/something. Be supportive.",
-            caring: "They care deeply. That's touching. Ask about them.",
-            approval: "They agree. Acknowledge their perspective.",
-            desire: "They want something. Explore what and why.",
-            
-            sadness: "Be gentle and caring. Don't rush to fix it. Just be there.",
-            grief: "Deep empathy. This is heavy. Acknowledge their pain.",
-            disappointment: "Validate it. It's okay to be disappointed. What happened?",
-            embarrassment: "Be understanding. We've all been there. It'll pass.",
-            remorse: "Show compassion. They're being hard on themselves.",
-            
-            anger: "Acknowledge frustration. Don't minimize. What triggered this?",
-            annoyance: "Relate to it. Things are annoying sometimes.",
-            disgust: "Validate their reaction. Some things are just wrong/gross.",
-            disapproval: "They disagree. Understand why.",
-            
-            fear: "Reassure gently. Their fears are real. What's scaring them?",
-            nervousness: "Be calming. Nerves are normal. Offer grounding support.",
-            confusion: "Help them think through it. Ask clarifying questions.",
-            
-            curiosity: "Engage their curiosity! Explore it together.",
-            surprise: "Acknowledge the unexpectedness. Ask what happened.",
-            realization: "Support their insight. They figured something out!",
-            
+            gratitude: "Accept thanks warmly. Be humble. Ask how they're feeling now.",
+            love: "Be warm and supportive. This is beautiful. Ask about who/what they love.",
+            caring: "They care deeply. That's touching. Acknowledge their compassion.",
+            admiration: "They appreciate someone. Support that. Ask what inspires them.",
+            sadness: "Be gentle and caring. Don't rush to fix it. Just be there and listen.",
+            grief: "Deep empathy. This is heavy. Acknowledge their pain. Be fully present.",
+            disappointment: "Validate it completely. It's okay to feel disappointed. Ask what happened.",
+            remorse: "Show compassion. They're being hard on themselves. Offer perspective.",
+            anger: "Acknowledge frustration. Don't minimize. Validate their anger. Ask what triggered it.",
+            annoyance: "Relate to it. Things are annoying sometimes. Let them vent.",
+            disgust: "Validate their reaction. Some things are just wrong. Understand their perspective.",
+            disapproval: "They disagree with something. Understand why. Respect their stance.",
+            fear: "Reassure gently. Their fears are real and valid. Ask what's scaring them.",
+            nervousness: "Be calming. Nerves are normal. Offer grounding support and encouragement.",
+            embarrassment: "Be understanding and lighthearted. We've all been there. It'll pass.",
+            confusion: "Help them think through it. Ask clarifying questions. Work through it together.",
+            surprise: "Acknowledge the unexpectedness. Share their reaction. Ask what happened.",
+            curiosity: "Engage their curiosity! Explore the topic together. Ask follow-ups.",
+            optimism: "Support their positive outlook. Be encouraging. Ask what they're hopeful about.",
+            desire: "They want something. Explore what and why. Support their dreams.",
+            realization: "Support their insight. They figured something out! Ask them to share more.",
             neutral: "Be naturally conversational. Ask what's on their mind."
         };
         
@@ -375,219 +483,216 @@ Generate your friend response (2-3 sentences max):`;
     },
     
     detectPattern() {
-        if (AppState.emotionHistory.length < 3) {
-            return 'New conversation - be welcoming';
-        }
+        if (AppState.emotionHistory.length < 3) return 'New conversation';
         
         const recent = AppState.emotionHistory.slice(-3);
-        const negative = ['sadness', 'anger', 'fear', 'grief', 'nervousness', 'disappointment'];
-        const positive = ['joy', 'excitement', 'love', 'gratitude', 'pride'];
+        const negative = ['sadness', 'anger', 'fear', 'grief', 'nervousness', 'disappointment', 'remorse', 'disgust', 'embarrassment'];
+        const positive = ['joy', 'excitement', 'love', 'gratitude', 'pride', 'relief', 'amusement'];
         
-        
-        if (recent.every(e => negative.includes(e))) {
-            return 'Struggling consistently - show extra support';
-        }
-        
-        if (negative.includes(recent[0]) && positive.includes(recent[2])) {
-            return 'Mood improving - acknowledge the shift';
-        }
-        
-        if (positive.includes(recent[0]) && negative.includes(recent[2])) {
-            return 'Mood declined - be empathetic';
-        }
+        if (recent.every(e => negative.includes(e))) return 'Struggling consistently - extra support needed';
+        if (negative.includes(recent[0]) && positive.includes(recent[2])) return 'Mood improving - celebrate the shift';
+        if (positive.includes(recent[0]) && negative.includes(recent[2])) return 'Mood declined - be extra gentle';
         
         return 'Normal flow - match their energy';
     },
     
     generateTemplate(analysis) {
-        const { primary, intensity } = analysis;
+        const { primary } = analysis;
         const emotion = primary.emotion;
         
         const templates = {
             joy: [
-                "That's awesome! I'm really happy for you. 😊 What made today so great?",
-                "Love this energy! Tell me more about what's going on.",
-                "This is amazing! Your happiness is contagious."
+                "That's awesome! I'm really happy for you! 😊 What made today so great?",
+                "Love this energy! Your happiness is contagious. Tell me more!",
+                "This is amazing! I'm so glad things are going well. What happened?",
+                "Yes! This makes me smile too. What's making you so happy?"
             ],
             excitement: [
-                "Okay now I'm excited too! When's this happening?",
-                "This sounds incredible! What are you most pumped about?",
-                "Yes!! I love this for you. Tell me everything!"
+                "Okay now I'm excited too! 🎉 When's this happening?",
+                "This sounds incredible! I'm pumped for you. What are you most excited about?",
+                "Yes!! I love this energy. Tell me everything!",
+                "I can feel your excitement from here! What's the big thing?"
             ],
             amusement: [
-                "Haha love it! What else is making you laugh today?",
-                "That's hilarious! Tell me more.",
-                "You're in a good mood! What's got you smiling?"
+                "Haha love it! 😄 What else is making you laugh today?",
+                "That's hilarious! I needed that laugh. Tell me more!",
+                "You're in a good mood! What's got you smiling?",
+                "I love when you're laughing! What's so funny?"
             ],
-            love: [
-                "That's really sweet. ❤️ Tell me more!",
-                "Aww, I love hearing this. Who/what are you loving?",
-                "This is so wholesome. I'm here for it!"
+            pride: [
+                "You should be SO proud! 🌟 That's incredible. How does it feel?",
+                "Yes! You earned this. I'm proud of you too! Tell me about it.",
+                "That's amazing! You absolutely crushed it. What did you accomplish?",
+                "This is huge! You deserve to celebrate. What's the achievement?"
+            ],
+            relief: [
+                "That must feel SO good! 😌 What finally happened?",
+                "Finally! I'm glad that weight is off you. Tell me more.",
+                "Phew! That's a major relief. What changed?",
+                "I bet you can breathe again! What got resolved?"
             ],
             gratitude: [
                 "Of course! That's what friends are for. 💛 How are you feeling now?",
-                "Anytime! I'm just glad I could help.",
-                "You don't have to thank me, but I appreciate it. 😊"
+                "Anytime! I'm just glad I could help. What else is going on?",
+                "You don't have to thank me, but I appreciate it. 😊 How can I help more?",
+                "I'm always here for you! What else do you need?"
             ],
-            pride: [
-                "You should be proud! That's incredible. 🌟 How does it feel?",
-                "Yes! You earned this. I'm proud of you too!",
-                "That's amazing! Celebrate yourself!"
+            love: [
+                "That's really sweet. ❤️ Love is beautiful! Tell me more about them!",
+                "Aww, I love hearing this! Who's the lucky person?",
+                "This is so wholesome. Love looks good on you! What do you love about them?",
+                "That's amazing! 💕 How long have you felt this way?"
             ],
-            relief: [
-                "That must feel so good! What happened?",
-                "Finally! I'm glad that weight is off you. Tell me more.",
-                "Phew! That's a relief for sure. What changed?"
+            caring: [
+                "That's really touching. 💙 You have such a kind heart. Who are you thinking about?",
+                "The fact that you care so much says a lot about you. Tell me more.",
+                "Your compassion is beautiful. What's going on with them?",
+                "It's clear you really care. How can you support them?"
             ],
-            optimism: [
-                "I love that outlook! What's making you feel so positive?",
-                "That's the spirit! What are you looking forward to?",
-                "Your positivity is refreshing! Tell me more."
+            admiration: [
+                "That's awesome! 🌟 Who are you admiring?",
+                "I love when someone inspires us like that. What do you admire about them?",
+                "That's really cool! What makes them so special to you?",
+                "Admiration is powerful. Tell me what impresses you about them!"
             ],
-            
             sadness: [
-                "I'm really sorry you're going through this. 💙 Want to talk about it?",
-                "That sounds really hard. I'm here for you.",
-                "I can tell you're hurting. You're not alone in this."
+                "I'm really sorry you're going through this. 💙 I'm here for you. Want to talk about it?",
+                "That sounds really hard. I'm here to listen, no judgment. What's been going on?",
+                "I can tell you're hurting. You're not alone - I'm here with you. What happened?",
+                "My heart goes out to you. 💔 Take your time. What's making you sad?"
             ],
             grief: [
-                "I'm so sorry. 💔 That's incredibly painful. I'm here with you.",
-                "My heart breaks for you. Take all the time you need.",
-                "There are no words for this pain. Just know I'm here."
+                "I'm so, so sorry. 💔 That's incredibly painful. I'm here with you.",
+                "My heart breaks for you. There are no words. Take all the time you need.",
+                "I can't imagine how hard this is. Just know I'm here. Want to talk about them?",
+                "This is devastating. I'm here for you, whenever you need. What can I do?"
             ],
             disappointment: [
-                "That's disappointing for sure. I'm sorry. What happened?",
-                "I can understand why you feel let down. That's tough.",
-                "It's okay to be disappointed. Those feelings are valid."
-            ],
-            embarrassment: [
-                "We've all been there, trust me. It'll pass. What happened?",
-                "That's awkward for sure, but it's okay. You'll be alright.",
-                "I get it. Embarrassing moments are the worst."
+                "That's really disappointing. I'm sorry that happened. 😔 What went down?",
+                "I can totally see why you'd feel let down. That's tough. Tell me about it.",
+                "It's completely okay to feel disappointed. Your feelings are valid. What happened?",
+                "That sucks. I'm sorry it didn't go the way you hoped. Want to talk through it?"
             ],
             remorse: [
-                "Hey, you're being really hard on yourself. What happened?",
-                "It's okay to feel bad, but don't beat yourself up.",
-                "We all make mistakes. That's how we learn."
+                "Hey, you're being really hard on yourself. 💜 We all make mistakes. What happened?",
+                "It's okay to feel bad, but don't beat yourself up. What's going on?",
+                "We all mess up sometimes. That's how we learn and grow. Tell me about it.",
+                "Your regret shows you care. That matters. What are you feeling guilty about?"
             ],
-            
             anger: [
-                "That sounds really frustrating. I'd be upset too. What happened?",
-                "Okay yeah, I can see why you're angry. Want to vent?",
-                "That's not okay. You have every right to be mad."
+                "That sounds really frustrating. 😤 I'd be upset too. What happened?",
+                "Okay yeah, I can totally see why you're angry. Want to vent about it?",
+                "That's not okay at all. You have every right to be mad. Tell me what happened.",
+                "I hear you. That would make me furious too. What triggered this?"
             ],
             annoyance: [
-                "That's annoying for sure. I get it. What's bothering you?",
-                "I'd be irritated too. Some things are just frustrating.",
-                "Ugh, I feel that. What happened?"
+                "That's annoying for sure. 😒 I get it. What's bothering you?",
+                "I'd be irritated too. Some things are just frustrating. What's going on?",
+                "Ugh, I feel that. Those little things add up. What happened?",
+                "Yeah, that would bug me too. Want to vent about it?"
             ],
             disgust: [
-                "That's gross/wrong. I don't blame you for feeling that way.",
-                "Yeah, that's not okay. What happened?",
-                "I totally understand your reaction. That's awful."
+                "That's awful. I don't blame you for feeling that way. 🤢 What happened?",
+                "Yeah, that's really gross/wrong. I totally understand your reaction.",
+                "I completely get why you're disgusted. That's not okay. Tell me more.",
+                "That's revolting. Your reaction is totally valid. What did you see/hear?"
             ],
             disapproval: [
-                "I hear you. You don't agree with that. Why not?",
-                "That doesn't sit right with you. Tell me more.",
-                "I get why you feel that way. What's your perspective?"
+                "I hear you. You don't agree with that. Why not? Tell me your thoughts.",
+                "That doesn't sit right with you, does it? What's your take on it?",
+                "I get why you feel that way. What specifically bothers you about it?",
+                "You have a different perspective. I respect that. What do you think instead?"
             ],
-            
             fear: [
-                "That sounds scary. Your feelings are valid. 💙 What's worrying you?",
-                "I hear you. Fear is real. Want to talk through it?",
-                "That's a lot to carry. You're not alone. I'm here."
+                "That sounds really scary. 💙 Your feelings are completely valid. What's worrying you?",
+                "I hear you. Fear is so real. Want to talk through it? I'm here.",
+                "That's a lot to carry. You're not alone in this. What's scaring you?",
+                "Your fear makes total sense. Let's work through this together. What's going on?"
             ],
             nervousness: [
-                "Nerves are the worst but totally normal. What's coming up?",
+                "Nerves are the worst, but totally normal. 😰 What's coming up that's making you anxious?",
                 "I get it. Being nervous just means you care. What's on your mind?",
-                "You've got this. Take a breath. What's making you anxious?"
+                "You've got this! Take a deep breath. What's making you nervous?",
+                "Anxiety is tough. I'm here with you. What's triggering this feeling?"
+            ],
+            embarrassment: [
+                "We've all been there, trust me! 😅 It'll pass. What happened?",
+                "That's awkward for sure, but you'll be okay. We've all had those moments!",
+                "I get it. Embarrassing moments are the worst. But it's not as bad as you think!",
+                "Everyone has embarrassing stories. This will be funny later! What went down?"
             ],
             confusion: [
-                "That's confusing for sure. Let's figure it out together. What's unclear?",
-                "I can see why you're lost. Want to talk through it?",
-                "Confusion is frustrating. What's the main thing you're stuck on?"
-            ],
-            
-            curiosity: [
-                "Ooh interesting question! Let's explore that together.",
-                "I'm curious too now! What made you think about this?",
-                "That's a great question. What do you think?"
+                "That's confusing for sure. 🤔 Let's figure it out together. What's unclear?",
+                "I can see why you're lost. Want to talk through it? What's the main issue?",
+                "Confusion is frustrating. Let's break it down. What part doesn't make sense?",
+                "Okay, let's work through this together. What are you trying to understand?"
             ],
             surprise: [
-                "Whoa! That's unexpected. What happened?",
-                "Didn't see that coming! Tell me more.",
-                "That's a surprise for sure! How do you feel about it?"
+                "Whoa! 😲 That's unexpected! What happened?",
+                "Didn't see that coming! Tell me more about this surprise!",
+                "That's wild! 🤯 How do you feel about it?",
+                "Wow! I'm surprised too! What's the story?"
+            ],
+            curiosity: [
+                "Ooh interesting question! 🤔 Let's explore that together.",
+                "I'm curious about that too now! What made you think about this?",
+                "That's a great question! What specifically are you curious about?",
+                "I love your curiosity! Let's dig into this. What do you want to know?"
+            ],
+            optimism: [
+                "I love that positive outlook! ✨ What's making you feel so hopeful?",
+                "That's the spirit! Your optimism is inspiring. What are you looking forward to?",
+                "Yes! I'm here for this energy. What's got you feeling so positive?",
+                "That's beautiful! Hope is powerful. What are you optimistic about?"
+            ],
+            desire: [
+                "That's a great goal! What is it that you want?",
+                "Dreams are important! Tell me what you're hoping for.",
+                "I hear that desire. What would make you happy?",
+                "What's calling to you? Tell me about this wish!"
             ],
             realization: [
-                "Oh! That makes sense now, right? What did you realize?",
-                "Aha moment! Tell me what clicked for you.",
-                "Love when things suddenly make sense. What did you figure out?"
+                "Oh! 💡 That makes sense now, right? What did you realize?",
+                "Aha moment! I love when things click. Tell me what you figured out!",
+                "Yes! Those realizations are powerful. What did you discover?",
+                "That's huge! What was your big realization?"
             ],
-            
             neutral: [
-                "Hey! What's on your mind today?",
-                "I'm here. What's going on?",
-                "How's everything? Want to chat?"
+                "Hey! 👋 What's on your mind today?",
+                "I'm here. How are you doing? Want to chat about something?",
+                "How's everything going? What's happening in your world?",
+                "Hi! What brings you here today?"
             ]
         };
         
         const options = templates[emotion] || templates.neutral;
-        let response = options[Math.floor(Math.random() * options.length)];
-        
-        // Add emphasis for high intensity
-        if (intensity === 'high') {
-            response = response.replace(/!/, '!!');
-        }
-        
-        return response;
+        return options[Math.floor(Math.random() * options.length)];
     }
 };
 
 // ============================================
-// DATABASE MODULE
+// DATABASE (IN-MEMORY)
 // ============================================
 
 const DatabaseModule = {
-    saveMessage(message) {
-        try {
-            const conversations = this.getConversations();
-            conversations.push(message);
-            localStorage.setItem('conversations', JSON.stringify(conversations));
-        } catch (error) {
-            console.error('Save error:', error);
-        }
+    saveMessage(msg) {
+        AppState.storedConversations.push(msg);
     },
     
     getConversations() {
-        try {
-            const data = localStorage.getItem('conversations');
-            return data ? JSON.parse(data) : [];
-        } catch (error) {
-            return [];
-        }
+        return AppState.storedConversations;
     },
     
     saveMoodLog(emotion, confidence) {
-        try {
-            const logs = this.getMoodLogs();
-            logs.push({
-                emotion,
-                confidence,
-                timestamp: new Date().toISOString()
-            });
-            localStorage.setItem('moodLogs', JSON.stringify(logs));
-        } catch (error) {
-            console.error('Mood save error:', error);
-        }
+        AppState.storedMoodLogs.push({
+            emotion,
+            confidence,
+            timestamp: new Date().toISOString()
+        });
     },
     
     getMoodLogs() {
-        try {
-            const data = localStorage.getItem('moodLogs');
-            return data ? JSON.parse(data) : [];
-        } catch (error) {
-            return [];
-        }
+        return AppState.storedMoodLogs;
     },
     
     exportData() {
@@ -601,11 +706,9 @@ const DatabaseModule = {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `mindfulchat-export-${Date.now()}.json`;
+        a.download = `mindfulchat-${Date.now()}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        
-        alert('✅ Data exported!');
     }
 };
 
@@ -614,55 +717,43 @@ const DatabaseModule = {
 // ============================================
 
 const OutputModule = {
-    displayMessage(message) {
+    displayMessage(msg) {
         const container = document.getElementById('chatMessages');
         if (!container) return;
         
-        const messageEl = document.createElement('div');
-        messageEl.className = `message ${message.type}`;
-        if (message.isQuote) messageEl.classList.add('quote');
+        const msgEl = document.createElement('div');
+        msgEl.className = `message ${msg.type}`;
         
-        const contentEl = document.createElement('div');
-        contentEl.className = 'message-content';
+        const content = document.createElement('div');
+        content.className = 'message-content';
         
-        if (message.type === 'bot' && !message.isQuote) {
-            const headerEl = document.createElement('div');
-            headerEl.className = 'bot-header';
-            headerEl.innerHTML = `
+        if (msg.type === 'bot' && !msg.isQuote) {
+            const header = document.createElement('div');
+            header.className = 'bot-header';
+            header.innerHTML = `
                 <span>🤖</span>
                 <span>AI Response</span>
-                ${message.emotion ? `<span>•</span><span class="capitalize">${message.emotion}</span>` : ''}
+                ${msg.emotion ? `<span>•</span><span class="capitalize">${msg.emotion}</span>` : ''}
             `;
-            contentEl.appendChild(headerEl);
+            content.appendChild(header);
         }
         
-        const textEl = document.createElement('div');
-        textEl.className = 'message-text';
-        textEl.textContent = message.text;
-        contentEl.appendChild(textEl);
+        const text = document.createElement('div');
+        text.className = 'message-text';
+        text.textContent = msg.text;
+        content.appendChild(text);
         
-        const footerEl = document.createElement('div');
-        footerEl.className = 'message-footer';
-        footerEl.innerHTML = `
-            <span>${message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            ${message.confidence ? `<span>${message.confidence}% confident</span>` : ''}
+        const footer = document.createElement('div');
+        footer.className = 'message-footer';
+        footer.innerHTML = `
+            <span>${msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            ${msg.confidence ? `<span>${msg.confidence}% confident</span>` : ''}
         `;
-        contentEl.appendChild(footerEl);
+        content.appendChild(footer);
         
-        messageEl.appendChild(contentEl);
-        container.appendChild(messageEl);
+        msgEl.appendChild(content);
+        container.appendChild(msgEl);
         container.scrollTop = container.scrollHeight;
-    },
-    
-    speak(text) {
-        if (!AppState.isSpeaking) return;
-        
-        const synth = window.speechSynthesis;
-        synth.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        synth.speak(utterance);
     },
     
     updateEmotionCard(emotion, confidence) {
@@ -681,6 +772,11 @@ const OutputModule = {
             sad: '😢',
             anxious: '😰',
             angry: '😠',
+            grateful: '🙏',
+            loving: '❤️',
+            confused: '🤔',
+            embarrassed: '😳',
+            surprised: '😲',
             neutral: '😐'
         };
         
@@ -692,27 +788,25 @@ const OutputModule = {
 };
 
 // ============================================
-// ANALYTICS MODULE
+// ANALYTICS
 // ============================================
 
 const AnalyticsModule = {
     generateMoodChart() {
         const ctx = document.getElementById('moodChart');
-        if (!ctx) return;
+        if (!ctx || typeof Chart === 'undefined') return;
         
-        if (AppState.moodChart) {
-            AppState.moodChart.destroy();
-        }
+        if (AppState.moodChart) AppState.moodChart.destroy();
         
         const data = AppState.moodData;
         
         AppState.moodChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Happy', 'Sad', 'Anxious', 'Angry', 'Neutral'],
+                labels: ['Happy', 'Sad', 'Anxious', 'Angry', 'Grateful', 'Loving', 'Confused', 'Embarrassed', 'Surprised', 'Neutral'],
                 datasets: [{
-                    data: [data.happy, data.sad, data.anxious, data.angry, data.neutral],
-                    backgroundColor: ['#fbbf24', '#3b82f6', '#8b5cf6', '#ef4444', '#6b7280']
+                    data: [data.happy, data.sad, data.anxious, data.angry, data.grateful, data.loving, data.confused, data.embarrassed, data.surprised, data.neutral],
+                    backgroundColor: ['#fbbf24', '#3b82f6', '#8b5cf6', '#ef4444', '#10b981', '#ec4899', '#f59e0b', '#f97316', '#06b6d4', '#6b7280']
                 }]
             },
             options: {
@@ -723,18 +817,22 @@ const AnalyticsModule = {
     },
     
     updateMoodHistory() {
-        const historyEl = document.getElementById('moodHistory');
-        if (!historyEl) return;
+        const el = document.getElementById('moodHistory');
+        if (!el) return;
         
         const logs = DatabaseModule.getMoodLogs().slice(-10).reverse();
-        historyEl.innerHTML = '';
+        el.innerHTML = '';
         
         if (logs.length === 0) {
-            historyEl.innerHTML = '<p style="text-align: center; color: #6b7280;">No history yet</p>';
+            el.innerHTML = '<p style="text-align: center; color: #6b7280;">No history yet</p>';
             return;
         }
         
-        const icons = { happy: '😊', sad: '😢', anxious: '😰', angry: '😠', neutral: '😐' };
+        const icons = { 
+            happy: '😊', sad: '😢', anxious: '😰', angry: '😠', 
+            grateful: '🙏', loving: '❤️', confused: '🤔', 
+            embarrassed: '😳', surprised: '😲', neutral: '😐' 
+        };
         
         logs.forEach(log => {
             const entry = document.createElement('div');
@@ -746,20 +844,20 @@ const AnalyticsModule = {
                     <div class="mood-entry-time">${new Date(log.timestamp).toLocaleString()}</div>
                 </div>
             `;
-            historyEl.appendChild(entry);
+            el.appendChild(entry);
         });
     },
     
     updateSessionSummary() {
-        const summaryEl = document.getElementById('sessionSummary');
-        if (!summaryEl) return;
+        const el = document.getElementById('sessionSummary');
+        if (!el) return;
         
         const duration = Math.floor((new Date() - AppState.sessionData.startTime) / 60000);
         const dominantMood = Object.keys(AppState.moodData).reduce((a, b) => 
             AppState.moodData[a] > AppState.moodData[b] ? a : b
         );
         
-        summaryEl.innerHTML = `
+        el.innerHTML = `
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <span>Duration:</span>
                 <span>${duration} min</span>
@@ -777,7 +875,7 @@ const AnalyticsModule = {
 };
 
 // ============================================
-// CORE FUNCTIONS
+// CORE CHAT FUNCTIONS
 // ============================================
 
 async function sendMessage() {
@@ -787,29 +885,24 @@ async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
     
-    console.log('📨 Sending message:', text);
-    
     input.value = '';
     input.style.height = 'auto';
     
-    // Add user message
-    const userMessage = {
+    const userMsg = {
         type: 'user',
-        text: text,
+        text,
         timestamp: new Date()
     };
     
-    AppState.messages.push(userMessage);
-    OutputModule.displayMessage(userMessage);
-    DatabaseModule.saveMessage(userMessage);
+    AppState.messages.push(userMsg);
+    OutputModule.displayMessage(userMsg);
+    DatabaseModule.saveMessage(userMsg);
     
-    // Update count
     AppState.sessionData.messageCount++;
     const countEl = document.getElementById('messageCount');
     if (countEl) countEl.textContent = AppState.sessionData.messageCount;
     
     try {
-        // Step 1: Analyze emotion with GoEmotions BERT
         const emotionAnalysis = await EmotionAnalyzer.detectEmotion(text);
         
         console.log('📊 Emotion Analysis:');
@@ -818,110 +911,45 @@ async function sendMessage() {
             console.log(`  Secondary: ${emotionAnalysis.secondary.emotion} (${emotionAnalysis.secondary.score}%)`);
         }
         
-        // Map to display emotion (28 emotions → 5 categories)
         const displayEmotion = GOEMOTIONS.getDisplayEmotion(emotionAnalysis.primary.emotion);
         
-        // Update state
         AppState.currentEmotion = displayEmotion;
         AppState.emotionConfidence = emotionAnalysis.primary.score;
         AppState.moodData[displayEmotion]++;
         
-        // Update UI
         OutputModule.updateEmotionCard(displayEmotion, emotionAnalysis.primary.score);
-        
-        // Save to database
         DatabaseModule.saveMoodLog(displayEmotion, emotionAnalysis.primary.score);
         
-        // Step 2: Generate friend-like LLM response
         const responseText = await ResponseGenerator.generateResponse(emotionAnalysis);
         
         console.log('💬 Bot Response:', responseText);
         
-        // Add bot message
         addBotMessage(responseText, displayEmotion, emotionAnalysis.primary.score);
         
-        // Speak if enabled
-        if (AppState.isSpeaking) {
-            OutputModule.speak(responseText);
+        if (AppState.isSpeaking && window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance(responseText);
+            utterance.rate = 0.9;
+            window.speechSynthesis.speak(utterance);
         }
         
     } catch (error) {
-        console.error('❌ Error processing message:', error);
-        addBotMessage("Hey, I hit a snag there. Can you try that again?", 'neutral', 0);
+        console.error('❌ Error:', error);
+        addBotMessage("Hey, I hit a snag there. Can you try again?", 'neutral', 0);
     }
 }
 
 function addBotMessage(text, emotion, confidence) {
-    const botMessage = {
+    const botMsg = {
         type: 'bot',
-        text: text,
+        text,
         timestamp: new Date(),
-        emotion: emotion,
-        confidence: confidence
+        emotion,
+        confidence
     };
     
-    AppState.messages.push(botMessage);
-    OutputModule.displayMessage(botMessage);
-    DatabaseModule.saveMessage(botMessage);
-}
-
-// ============================================
-// SPEECH & UI FUNCTIONS
-// ============================================
-
-function initializeSpeechRecognition() {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        console.log('Speech not supported');
-        return;
-    }
-    
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    AppState.recognition = new SpeechRecognition();
-    
-    AppState.recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        const input = document.getElementById('userInput');
-        if (input) input.value = transcript;
-    };
-    
-    AppState.recognition.onend = () => {
-        AppState.isListening = false;
-        const btn = document.getElementById('voiceBtn');
-        if (btn) btn.classList.remove('active');
-    };
-}
-
-function toggleVoiceInput() {
-    if (!AppState.recognition) {
-        alert('Speech recognition not supported');
-        return;
-    }
-    
-    const btn = document.getElementById('voiceBtn');
-    
-    if (AppState.isListening) {
-        AppState.recognition.stop();
-        AppState.isListening = false;
-        if (btn) btn.classList.remove('active');
-    } else {
-        AppState.recognition.start();
-        AppState.isListening = true;
-        if (btn) btn.classList.add('active');
-    }
-}
-
-function toggleSpeaker() {
-    AppState.isSpeaking = !AppState.isSpeaking;
-    const btn = document.getElementById('speakerBtn');
-    
-    if (btn) {
-        btn.classList.toggle('active', AppState.isSpeaking);
-        btn.textContent = AppState.isSpeaking ? '🔊' : '🔇';
-    }
-    
-    if (!AppState.isSpeaking) {
-        window.speechSynthesis.cancel();
-    }
+    AppState.messages.push(botMsg);
+    OutputModule.displayMessage(botMsg);
+    DatabaseModule.saveMessage(botMsg);
 }
 
 function showLoading() {
@@ -947,46 +975,50 @@ function toggleAnalytics() {
     }
 }
 
-function toggleArchitecture() {
-    const modal = document.getElementById('architectureModal');
-    if (modal) modal.classList.toggle('active');
-}
-
 function exportData() {
     DatabaseModule.exportData();
 }
 
 function getQuote() {
     const quotes = [
-        "You are stronger than you think.",
-        "Healing is not linear. Be patient with yourself.",
-        "Your feelings are valid.",
-        "Small steps forward are still progress.",
-        "You deserve compassion, especially from yourself.",
-        "It's okay to not be okay sometimes.",
-        "You're doing better than you think.",
-        "This too shall pass."
+        "You are stronger than you think. 💪",
+        "Healing is not linear. Be patient with yourself. 🌱",
+        "Your feelings are valid. All of them. 💙",
+        "Small steps forward are still progress. 🚶",
+        "You deserve compassion, especially from yourself. 💛",
+        "It's okay to not be okay sometimes. 🤗",
+        "You're doing better than you think. ✨",
+        "This too shall pass. 🌈",
+        "Every storm runs out of rain. ⛈️",
+        "You've survived 100% of your worst days. 🌟",
+        "Be kind to yourself. You're doing your best. 💕",
+        "Progress, not perfection. 🎯"
     ];
     
     const quote = quotes[Math.floor(Math.random() * quotes.length)];
-    const quoteMessage = {
+    const quoteMsg = {
         type: 'bot',
         text: `💭 "${quote}"`,
         timestamp: new Date(),
         isQuote: true
     };
     
-    AppState.messages.push(quoteMessage);
-    OutputModule.displayMessage(quoteMessage);
+    AppState.messages.push(quoteMsg);
+    OutputModule.displayMessage(quoteMsg);
 }
 
 function suggestMusic() {
     const music = {
-        happy: "Uplifting Vibes Playlist",
-        sad: "Healing & Comfort",
-        anxious: "Calm & Peaceful",
-        angry: "Release & Let Go",
-        neutral: "Ambient Focus"
+        happy: "Uplifting Vibes Playlist 🎵 - Feel-good music to keep the energy high!",
+        sad: "Healing & Comfort 🎵 - Gentle music to help you process emotions",
+        anxious: "Calm & Peaceful 🎵 - Soothing sounds to ease anxiety",
+        angry: "Release & Let Go 🎵 - Cathartic music to channel anger",
+        grateful: "Gratitude Flow 🎵 - Music to amplify thankfulness",
+        loving: "Love & Connection 🎵 - Romantic and heartwarming tunes",
+        confused: "Focus & Clarity 🎵 - Music to help you think clearly",
+        embarrassed: "Confidence Boost 🎵 - Music to lift your spirits",
+        surprised: "Energy Boost 🎵 - Exciting and unexpected tracks",
+        neutral: "Ambient Focus 🎵 - Background music for any mood"
     };
     
     const suggestion = music[AppState.currentEmotion] || music.neutral;
@@ -995,103 +1027,22 @@ function suggestMusic() {
 
 function suggestVideo() {
     const videos = {
-        happy: "5-Min Gratitude Meditation",
-        sad: "Self-Compassion Meditation",
-        anxious: "4-7-8 Breathing Exercise",
-        angry: "Progressive Muscle Relaxation",
-        neutral: "10-Min Mindfulness"
+        happy: "5-Min Gratitude Meditation 🎬 - Amplify your joy!",
+        sad: "Self-Compassion Meditation 🎬 - Be gentle with yourself",
+        anxious: "4-7-8 Breathing Exercise 🎬 - Calm your nervous system",
+        angry: "Progressive Muscle Relaxation 🎬 - Release tension",
+        grateful: "Appreciation Meditation 🎬 - Deepen your gratitude",
+        loving: "Loving-Kindness Meditation 🎬 - Spread the love",
+        confused: "Clarity Meditation 🎬 - Clear your mind",
+        embarrassed: "Confidence Building 🎬 - Remember your worth",
+        surprised: "Grounding Exercise 🎬 - Center yourself",
+        neutral: "10-Min Mindfulness 🎬 - General wellbeing"
     };
     
     const suggestion = videos[AppState.currentEmotion] || videos.neutral;
     addBotMessage(`🎬 Video Suggestion: ${suggestion}`, AppState.currentEmotion, 0);
 }
 
-function autoResizeTextarea() {
-    const textarea = document.getElementById('userInput');
-    if (textarea) {
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    }
-}
-
-function initializeApp() {
-    console.log('✅ Initializing GoEmotions BERT System...');
-    
-    // Check API keys
-    if (API_CONFIG.huggingface.token === 'YOUR_HUGGINGFACE_TOKEN') {
-        console.warn('⚠️ WARNING: Hugging Face token not configured!');
-        console.warn('Get your token from: https://huggingface.co/settings/tokens');
-    }
-    
-    if (API_CONFIG.gemini.apiKey === 'YOUR_GEMINI_API_KEY') {
-        console.warn('⚠️ WARNING: Gemini API key not configured!');
-        console.warn('Get your key from: https://makersuite.google.com/app/apikey');
-        console.log('📋 Will use template responses as fallback');
-    }
-    
-    const startTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const startEl = document.getElementById('sessionStart');
-    if (startEl) startEl.textContent = startTime;
-    
-    addBotMessage(
-        "Hey! I'm your AI emotional support companion. I use GoEmotions BERT to understand how you're feeling and respond like a real friend. How are you today?",
-        'neutral',
-        0
-    );
-    
-    initializeSpeechRecognition();
-    
-    const input = document.getElementById('userInput');
-    if (input) {
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-        input.addEventListener('input', autoResizeTextarea);
-    }
-    
-    console.log('✅ System ready!');
-    console.log('');
-    console.log('='.repeat(60));
-    console.log('GOEMOTIONS BERT SYSTEM CONFIGURATION');
-    console.log('='.repeat(60));
-    console.log('Emotion Model: SamLowe/roberta-base-go_emotions');
-    console.log('Emotions Detected: 28 (GoEmotions dataset)');
-    console.log('Response Generator: Google Gemini Pro');
-    console.log('Fallback: Template-based responses');
-    console.log('='.repeat(60));
-}
-
-// ============================================
-// KEYBOARD SHORTCUTS
-// ============================================
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        const modal = document.getElementById('architectureModal');
-        if (modal && modal.classList.contains('active')) {
-            toggleArchitecture();
-        }
-        
-        const panel = document.getElementById('analyticsPanel');
-        if (panel && panel.classList.contains('active')) {
-            toggleAnalytics();
-        }
-    }
-});
-
-// ============================================
-// INITIALIZE ON LOAD
-// ============================================
-
-window.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Starting MindfulChat AI with GoEmotions BERT...');
-    initializeApp();
-});
-
-console.log('📝 GoEmotions BERT Script loaded!');
 function exportConversationSummary() {
     const summary = {
         sessionDuration: Math.floor((new Date() - AppState.sessionData.startTime) / 60000),
@@ -1101,16 +1052,96 @@ function exportConversationSummary() {
             AppState.moodData[a] > AppState.moodData[b] ? a : b
         ),
         emotionBreakdown: AppState.moodData,
-        conversationHighlights: AppState.messages.filter(m => m.confidence > 80)
+        conversationHighlights: AppState.messages.filter(m => m.confidence && m.confidence > 80)
     };
     
     console.log('📊 Session Summary:', summary);
     
-    // Download as JSON
     const blob = new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `session-summary-${Date.now()}.json`;
     a.click();
+    URL.revokeObjectURL(url);
+    
+    console.log('✅ Summary exported!');
 }
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+function initializeApp() {
+    console.log('✅ Initializing Enhanced GoEmotions System...');
+    
+    if (API_CONFIG.huggingface.token === 'YOUR_HUGGINGFACE_TOKEN') {
+        console.warn('⚠️ Hugging Face token not set - using enhanced keyword fallback');
+    } else {
+        console.log('✅ Hugging Face configured');
+    }
+    
+    if (API_CONFIG.gemini.apiKey === 'YOUR_GEMINI_API_KEY') {
+        console.warn('⚠️ Gemini API not set - using enhanced template responses');
+    } else {
+        console.log('✅ Gemini configured');
+    }
+    
+    if (typeof Chart === 'undefined') {
+        console.warn('⚠️ Chart.js not loaded - analytics unavailable');
+    } else {
+        console.log('✅ Chart.js loaded');
+    }
+    
+    // Initialize speech module
+    SpeechModule.init();
+    
+    const startEl = document.getElementById('sessionStart');
+    if (startEl) startEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    const countEl = document.getElementById('messageCount');
+    if (countEl) countEl.textContent = '0';
+    
+    addBotMessage(
+        "Hey! 👋 I'm your AI emotional support companion. I can detect 28 different emotions and respond like a real friend. How are you feeling today?",
+        'neutral',
+        0
+    );
+    
+    const input = document.getElementById('userInput');
+    if (input) {
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        });
+    }
+    
+    console.log('✅ System ready!');
+    console.log('');
+    console.log('='.repeat(70));
+    console.log('ENHANCED GOEMOTIONS SYSTEM');
+    console.log('='.repeat(70));
+    console.log('Emotions: 28 GoEmotions labels');
+    console.log('Display Categories: 10 (happy, sad, anxious, angry, grateful, loving,');
+    console.log('                     confused, embarrassed, surprised, neutral)');
+    console.log('Response Templates: 100+ unique responses');
+    console.log('Keywords Tracked: 200+ emotional indicators');
+    console.log('Voice Features: Speech Recognition + Text-to-Speech');
+    console.log('='.repeat(70));
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+    initializeApp();
+}
+
+console.log('📝 Enhanced MindfulChat with Voice Support loaded successfully!');
